@@ -1,6 +1,7 @@
 package com.example.backend
 
 import cats.effect.{IO, IOApp}
+import cats.syntax.semigroupk.*
 import com.comcast.ip4s.{Host, Port}
 import com.example.models.Song
 import com.example.models.Song.given
@@ -13,7 +14,6 @@ import org.http4s.ember.server.EmberServerBuilder
 import org.typelevel.ci.CIStringSyntax
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
-import cats.syntax.semigroupk.*
 
 import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters.*
@@ -168,18 +168,20 @@ object Main extends IOApp.Simple:
 
   // Serve static files from resources/public (frontend dist)
   private def staticRoutes: HttpRoutes[IO] = HttpRoutes.of[IO] {
+
+    case GET -> Root =>
+      fallbackToIndex()
+
     case GET -> path =>
-      val filePath = "/" + path.segments.map(_.encoded).mkString("/")
-      val resource = s"public$filePath"
-      
-      // Try to load the file from resources
+      val filePath = path.segments.map(_.encoded).mkString("/")
+      val resource = s"public/$filePath"
+
       IO(Option(this.getClass.getClassLoader.getResourceAsStream(resource))).flatMap {
         case Some(stream) =>
           try
             val content = stream.readAllBytes()
             stream.close()
-            
-            // Determine content type
+
             val contentType = filePath match
               case p if p.endsWith(".html") => "text/html"
               case p if p.endsWith(".js") => "application/javascript"
@@ -189,19 +191,16 @@ object Main extends IOApp.Simple:
               case p if p.endsWith(".png") => "image/png"
               case p if p.endsWith(".jpg") || p.endsWith(".jpeg") => "image/jpeg"
               case _ => "application/octet-stream"
-            
-            Ok(content)
-              .map(_.putHeaders(Header.Raw(ci"Content-Type", contentType)))
+
+            Ok(content).map(_.putHeaders(Header.Raw(ci"Content-Type", contentType)))
           catch
-            case _: Exception => 
-              // Fall back to index.html for SPA routing
+            case _: Exception =>
               fallbackToIndex()
         case None =>
-          // Fall back to index.html for SPA routing
           fallbackToIndex()
       }
   }
-  
+
   private def fallbackToIndex(): IO[Response[IO]] =
     IO(Option(this.getClass.getClassLoader.getResourceAsStream("public/index.html"))).flatMap {
       case Some(stream) =>
@@ -218,7 +217,7 @@ object Main extends IOApp.Simple:
   def run: IO[Unit] =
     // Combine routes with proper priority: API routes first, then static files
     val combined = routes <+> staticRoutes
-    
+
     EmberServerBuilder
       .default[IO]
       .withHost(Host.fromString("0.0.0.0").get)

@@ -8,6 +8,9 @@ export default function App() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [currentPlaying, setCurrentPlaying] = useState(null)
+
+    const [currentIndex, setCurrentIndex] = useState(-1)
+
     const audioRef = useRef(null)
 
     const loadFolders = async (dir = '') => {
@@ -33,10 +36,17 @@ export default function App() {
             const response = await fetch(`/list?dir=${encodeURIComponent(dir)}`)
             if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
             const data = await response.json()
-            setSongs(Array.isArray(data) ? data : [])
+            const list = Array.isArray(data) ? data : []
+            setSongs(list)
+
+            // Reset playback when the playlist changes
+            setCurrentPlaying(null)
+            setCurrentIndex(-1)
         } catch (err) {
             setError(`Error: ${err.message}`)
             setSongs([])
+            setCurrentPlaying(null)
+            setCurrentIndex(-1)
         } finally {
             setLoading(false)
         }
@@ -45,6 +55,8 @@ export default function App() {
     const browseRoot = async () => {
         setCurrentFolder('')
         setSongs([])
+        setCurrentPlaying(null)
+        setCurrentIndex(-1)
         await loadFolders('')
     }
 
@@ -62,12 +74,24 @@ export default function App() {
         await Promise.all([loadFolders(parent), loadSongs(parent)])
     }
 
-    const playSong = (song) => {
-        if (audioRef.current) {
-            audioRef.current.src = `/stream?file=${encodeURIComponent(song.path)}`
-            audioRef.current.play()
-            setCurrentPlaying(song.path)
-        }
+    const playSongAtIndex = (idx) => {
+        if (!audioRef.current) return
+        if (idx < 0 || idx >= songs.length) return
+
+        const song = songs[idx]
+        audioRef.current.src = `/stream?file=${encodeURIComponent(song.path)}`
+        audioRef.current
+            .play()
+            .catch((e) => setError(`Playback error: ${e?.message ?? String(e)}`))
+
+        setCurrentPlaying(song.path)
+        setCurrentIndex(idx)
+    }
+    const handleEnded = () => {
+        if (!songs.length) return
+
+        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % songs.length : 0
+        playSongAtIndex(nextIndex)
     }
 
     return (
@@ -78,11 +102,7 @@ export default function App() {
 
             <div className="input-group">
                 <label>Current folder:</label>
-                <input
-                    type="text"
-                    value={currentFolder || '(base folder)'}
-                    readOnly
-                />
+                <input type="text" value={currentFolder || '(base folder)'} readOnly/>
                 <button onClick={browseRoot} disabled={loading}>
                     Browse
                 </button>
@@ -106,7 +126,7 @@ export default function App() {
                 </div>
             )}
 
-            <audio ref={audioRef} controls></audio>
+            <audio ref={audioRef} controls onEnded={handleEnded}></audio>
 
             {songs.length > 0 && (
                 <div className="playlist">
@@ -116,7 +136,7 @@ export default function App() {
                             <li
                                 key={`${song.path}-${idx}`}
                                 className={currentPlaying === song.path ? 'active' : ''}
-                                onClick={() => playSong(song)}
+                                onClick={() => playSongAtIndex(idx)}
                             >
                                 {song.name}
                             </li>

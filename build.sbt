@@ -1,3 +1,6 @@
+import sbtassembly.AssemblyPlugin.autoImport.*
+import sbtassembly.MergeStrategy
+
 ThisBuild / version := "0.1.0"
 ThisBuild / scalaVersion := "3.8.1"
 ThisBuild / organization := "com.example"
