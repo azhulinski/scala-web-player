@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <option name="separateProdTestSources" value="true" />
+    <profile name="sbt 1" modules="mp3-player,mp3-player.main,mp3-player.mp3-player-backend,mp3-player.mp3-player-backend.main,mp3-player.mp3-player-backend.test,mp3-player.mp3-player-frontend,mp3-player.mp3-player-shared,mp3-player.mp3-player-shared.main,mp3-player.mp3-player-shared.sharedJS,mp3-player.mp3-player-shared.sharedJVM,mp3-player.mp3-player-shared.sharedJVM.main,mp3-player.mp3-player-shared.sharedJVM.test,mp3-player.mp3-player-shared.test,mp3-player.test,scala-web-player,scala-web-player.main,scala-web-player.test" />
+    <profile name="sbt 2" modules="mp3-player.mp3-player-frontend.main,mp3-player.mp3-player-frontend.test,mp3-player.mp3-player-shared.sharedJS.main,mp3-player.mp3-player-shared.sharedJS.test">
+      <parameters>
+        <parameter value="-scalajs" />
+      </parameters>
+    </profile>
+  </component>
+</project>
