@@ -20,6 +20,15 @@ export default function App() {
 
     const audioRef = useRef(null)
 
+    const currentSong =
+        (currentIndex >= 0 && currentIndex < songs.length)
+            ? songs[currentIndex]
+            : (currentPlaying ? songs.find(s => s.file === currentPlaying) : null)
+
+    const nowPlayingText = currentSong
+        ? `${currentSong.artist || 'Unknown artist'} — ${currentSong.title || currentSong.name || 'Unknown title'}`
+        : 'Nothing playing'
+
     const togglePlay = () => {
         if (!audioRef.current) return
         if (isPlaying) {
@@ -86,8 +95,6 @@ export default function App() {
             const data = await response.json()
             const list = Array.isArray(data) ? data : []
             setSongs(list)
-
-            // Reset playback when the playlist changes
             setCurrentPlaying(null)
             setCurrentIndex(-1)
             setShuffleMode(false)
@@ -104,10 +111,8 @@ export default function App() {
         }
     }
 
-    // Generate shuffled playlist
     const initializeShuffle = (list) => {
         const indices = Array.from({length: list.length}, (_, i) => i)
-        // Fisher-Yates shuffle
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [indices[i], indices[j]] = [indices[j], indices[i]]
@@ -115,54 +120,44 @@ export default function App() {
         return indices
     }
 
-    // Toggle shuffle mode
     const toggleShuffle = () => {
         if (!shuffleMode && songs.length > 0) {
-            // Turning ON shuffle
             setShuffledIndices(initializeShuffle(songs))
         }
         setShuffleMode(!shuffleMode)
     }
 
-    // Get next song index
     const getNextIndex = () => {
         if (songs.length === 0) return -1
 
         if (shuffleMode) {
-            // In shuffle mode
             if (shuffledIndices.length === 0) return -1
             const currentPosInShuffled = shuffledIndices.indexOf(currentIndex)
             const nextPos = (currentPosInShuffled + 1) % shuffledIndices.length
             return shuffledIndices[nextPos]
         } else {
-            // Normal mode
             return (currentIndex + 1) % songs.length
         }
     }
 
-    // Get previous song index
     const getPreviousIndex = () => {
         if (songs.length === 0) return -1
 
         if (shuffleMode) {
-            // In shuffle mode
             if (shuffledIndices.length === 0) return -1
             const currentPosInShuffled = shuffledIndices.indexOf(currentIndex)
             const prevPos = currentPosInShuffled === 0 ? shuffledIndices.length - 1 : currentPosInShuffled - 1
             return shuffledIndices[prevPos]
         } else {
-            // Normal mode
             return currentIndex <= 0 ? songs.length - 1 : currentIndex - 1
         }
     }
 
-    // Play next song
     const playNext = () => {
         const nextIdx = getNextIndex()
         if (nextIdx >= 0) playSongAtIndex(nextIdx)
     }
 
-    // Play previous song
     const playPrevious = () => {
         const prevIdx = getPreviousIndex()
         if (prevIdx >= 0) playSongAtIndex(prevIdx)
@@ -195,12 +190,12 @@ export default function App() {
         if (idx < 0 || idx >= songs.length) return
 
         const song = songs[idx]
-        audioRef.current.src = `/stream?file=${encodeURIComponent(song.path)}`
+        audioRef.current.src = `/stream?file=${encodeURIComponent(song.file)}`
         audioRef.current
             .play()
             .catch((e) => setError(`Playback error: ${e?.message ?? String(e)}`))
 
-        setCurrentPlaying(song.path)
+        setCurrentPlaying(song.file)
         setCurrentIndex(idx)
     }
     const handleEnded = () => {
@@ -250,6 +245,8 @@ export default function App() {
             ></audio>
 
             <div className="player">
+                <div className="now-playing" title={nowPlayingText}>{nowPlayingText}</div>
+
                 <div className="player-progress">
                     <input
                         type="range"
@@ -300,11 +297,11 @@ export default function App() {
                     <ul>
                         {songs.map((song, idx) => (
                             <li
-                                key={`${song.path}-${idx}`}
-                                className={currentPlaying === song.path ? 'active' : ''}
+                                key={`${song.file}-${idx}`}
+                                className={currentPlaying === song.file ? 'active' : ''}
                                 onClick={() => playSongAtIndex(idx)}
                             >
-                                {song.name}
+                                {song.artist} - {song.name}
                             </li>
                         ))}
                     </ul>
@@ -313,6 +310,3 @@ export default function App() {
         </div>
     )
 }
-
-
-

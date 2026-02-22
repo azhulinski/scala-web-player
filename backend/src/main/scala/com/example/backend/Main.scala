@@ -11,6 +11,8 @@ import org.http4s.*
 import org.http4s.circe.*
 import org.http4s.dsl.io.*
 import org.http4s.ember.server.EmberServerBuilder
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
 import org.typelevel.ci.CIStringSyntax
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
@@ -20,7 +22,6 @@ import scala.jdk.CollectionConverters.*
 
 object Main extends IOApp.Simple:
 
-  // Configure with env var MUSIC_BASE, e.g. C:\Users\<you>\Music
   private val BASE_PATH: String =
     sys.env.getOrElse("MUSIC_BASE", "/home/andrii")
 
@@ -29,18 +30,12 @@ object Main extends IOApp.Simple:
 
   given loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
 
-  /**
-   * Accepts either:
-   *  - a relative path (treated as relative to basePath), or
-   *  - an absolute path
-   *    Returns a normalized absolute path only if it is inside basePath.
-   */
+  /** Resolve input (relative or absolute) and ensure it stays under basePath */
   private def validatePath(input: String): Option[Path] =
     val raw = Paths.get(input)
     val resolved =
       if raw.isAbsolute then raw.toAbsolutePath.normalize()
       else basePath.resolve(raw).normalize()
-
     if resolved.startsWith(basePath) then Some(resolved) else None
 
   /**
@@ -67,10 +62,21 @@ object Main extends IOApp.Simple:
         case _: Exception => List.empty
     }
 
-  /**
-   * Recursively finds all .mp3 files in a directory.
-   * NOTE: Song.path is returned as absolute path (keeps your current frontend working).
-   */
+  private def readTags(fileAbs: Path): (Option[String], Option[String], Option[String], Option[Int]) =
+    try
+      val audioFile = AudioFileIO.read(fileAbs.toFile)
+      val tag = Option(audioFile.getTag)
+      val header = Option(audioFile.getAudioHeader)
+
+      val title = tag.map(_.getFirst(FieldKey.TITLE)).map(_.trim).filter(_.nonEmpty)
+      val artist = tag.map(_.getFirst(FieldKey.ARTIST)).map(_.trim).filter(_.nonEmpty)
+      val album = tag.map(_.getFirst(FieldKey.ALBUM)).map(_.trim).filter(_.nonEmpty)
+      val durationSec = header.map(_.getTrackLength).filter(_ > 0)
+
+      (title, artist, album, durationSec)
+    catch
+      case _: Exception => (None, None, None, None)
+
   private def findMp3Files(dirAbs: Path): IO[List[Song]] =
     IO.blocking {
       try
@@ -82,10 +88,18 @@ object Main extends IOApp.Simple:
             .toList
             .filter(p => Files.isRegularFile(p) && p.toString.toLowerCase.endsWith(".mp3"))
             .map { filePath =>
+              val abs = filePath.toAbsolutePath.normalize()
+              val rel = basePath.relativize(abs).toString // <- key: relative id for streaming
+              val (title, artist, album, durationSec) = readTags(abs)
+              val fileName = abs.getFileName.toString
+
               Song(
-                name = filePath.getFileName.toString,
-                path = filePath.toAbsolutePath.normalize().toString,
-                duration = None
+                name = title.getOrElse(fileName),
+                file = rel,
+                duration = durationSec,
+                title = title,
+                artist = artist,
+                album = album
               )
             }
             .sortBy(_.name.toLowerCase)
@@ -94,8 +108,6 @@ object Main extends IOApp.Simple:
     }
 
   private def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
-
-    // List folders under base or under a subfolder: /folders?dir=<relative>
     case req@GET -> Root / "folders" =>
       val dirParam: String = req.uri.query.params.getOrElse("dir", "")
       validatePath(dirParam) match
@@ -105,7 +117,7 @@ object Main extends IOApp.Simple:
             json = folders.map { case (name, relPath) =>
               Json.obj(
                 "name" -> Json.fromString(name),
-                "path" -> Json.fromString(relPath) // relative to basePath
+                "path" -> Json.fromString(relPath)
               )
             }.asJson
             resp <- Ok(json)
@@ -113,7 +125,6 @@ object Main extends IOApp.Simple:
         case None =>
           Forbidden(Json.obj("error" -> Json.fromString("Access denied")))
 
-    // List mp3 files (recursive) in a folder: /list?dir=<relative>
     case req@GET -> Root / "list" =>
       val dirParam: String = req.uri.query.params.getOrElse("dir", "")
       validatePath(dirParam) match
@@ -125,7 +136,6 @@ object Main extends IOApp.Simple:
         case None =>
           Forbidden(Json.obj("error" -> Json.fromString("Access denied")))
 
-    // Stream mp3 file: /stream?file=<absolute or relative>
     case req@GET -> Root / "stream" =>
       req.uri.query.params.get("file") match
         case Some(fileParam) =>
@@ -143,18 +153,13 @@ object Main extends IOApp.Simple:
                       Header.Raw(ci"Accept-Ranges", "bytes"),
                     )
                   )
-                  .handleErrorWith { e =>
-                    InternalServerError(
-                      Json.obj("error" -> Json.fromString(s"Streaming failed: ${e.getMessage}"))
-                    )
-                  }
             case None =>
               Forbidden(Json.obj("error" -> Json.fromString("Access denied")))
         case None =>
           BadRequest(Json.obj("error" -> Json.fromString("Missing 'file' parameter")))
   }
 
-  // CORS middleware (Vite proxy also works; this keeps direct access workable too)
+  // CORS middleware
   private def corsMiddleware(http: HttpRoutes[IO]): HttpRoutes[IO] =
     HttpRoutes { req =>
       http.run(req).map { resp =>
@@ -166,7 +171,6 @@ object Main extends IOApp.Simple:
       }
     }
 
-  // Serve static files from resources/public (frontend dist)
   private def staticRoutes: HttpRoutes[IO] = HttpRoutes.of[IO] {
 
     case GET -> Root =>
@@ -215,7 +219,6 @@ object Main extends IOApp.Simple:
     }
 
   def run: IO[Unit] =
-    // Combine routes with proper priority: API routes first, then static files
     val combined = routes <+> staticRoutes
 
     EmberServerBuilder

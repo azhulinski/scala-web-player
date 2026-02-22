@@ -2,54 +2,36 @@ package com.example.models
 
 import io.circe.{Decoder, Encoder, HCursor, Json}
 
-/**
- * Represents an MP3 file in the music library
- *
- * @param name     File name (e.g., "song.mp3")
- * @param path     Full absolute path to the file
- * @param duration Duration in seconds (optional)
- */
-final class Song(
-                  val name: String,
-                  val path: String,
-                  val duration: Option[Int]
-                ) derives CanEqual:
-  def copy(
-            name: String = this.name,
-            path: String = this.path,
-            duration: Option[Int] = this.duration
-          ): Song = new Song(name, path, duration)
-
-  override def toString: String = s"Song($name, $path, $duration)"
-
-  override def hashCode(): Int =
-    (name.hashCode * 31 + path.hashCode) * 31 + duration.hashCode
-
-  override def equals(obj: Any): Boolean = obj match
-    case s: Song => s.name == name && s.path == path && s.duration == duration
-    case _ => false
+final case class Song(
+                       name: String,
+                       file: String,
+                       duration: Option[Int] = None,
+                       title: Option[String] = None,
+                       artist: Option[String] = None,
+                       album: Option[String] = None,
+                     ) derives CanEqual
 
 object Song:
-  def apply(name: String, path: String, duration: Option[Int] = None): Song =
-    new Song(name, path, duration)
-
-  def unapply(s: Song): Option[(String, String, Option[Int])] =
-    Some((s.name, s.path, s.duration))
-
   given Encoder[Song] with
     def apply(song: Song): Json =
       Json.obj(
         "name" -> Json.fromString(song.name),
-        "path" -> Json.fromString(song.path),
-        "duration" -> song.duration.fold(Json.Null)(Json.fromInt)
+        "file" -> Json.fromString(song.file),
+        "duration" -> song.duration.fold(Json.Null)(Json.fromInt),
+        "title" -> song.title.fold(Json.Null)(Json.fromString),
+        "artist" -> song.artist.fold(Json.Null)(Json.fromString),
+        "album" -> song.album.fold(Json.Null)(Json.fromString),
       )
 
   given Decoder[Song] with
     def apply(c: HCursor): Decoder.Result[Song] =
       for
         name <- c.get[String]("name")
-        path <- c.get[String]("path")
+        file <- c.get[String]("file")
         duration <- c.get[Option[Int]]("duration")
-      yield Song(name, path, duration)
+        title <- c.get[Option[String]]("title")
+        artist <- c.get[Option[String]]("artist")
+        album <- c.get[Option[String]]("album")
+      yield Song(name, file, duration, title, artist, album)
 
 

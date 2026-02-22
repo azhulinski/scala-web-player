@@ -9,7 +9,6 @@ val http4sVersion = "1.0.0-M46"
 val catsEffectVersion = "3.6.3"
 val circeVersion = "0.14.15"
 
-// Shared module - common models
 lazy val shared = project
   .in(file("shared"))
   .settings(
@@ -19,7 +18,6 @@ lazy val shared = project
     )
   )
 
-// Backend module - http4s server
 lazy val backend = project
   .in(file("backend"))
   .dependsOn(shared)
@@ -36,7 +34,27 @@ lazy val backend = project
       "org.typelevel" %% "log4cats-core" % "2.7.1",
       "org.typelevel" %% "log4cats-slf4j" % "2.7.1",
       "org.slf4j" % "slf4j-simple" % "2.0.17",
+      "net.jthink" % "jaudiotagger" % "3.0.1"
     ),
+    
+    Compile / resourceGenerators += Def.task {
+      val log = streams.value.log
+
+      val repoRoot = (ThisBuild / baseDirectory).value
+      val frontendDist = repoRoot / "frontend" / "dist"
+      val outDir = (Compile / resourceManaged).value / "public"
+
+      if (frontendDist.exists()) {
+        IO.delete(outDir)
+        IO.createDirectory(outDir)
+        IO.copyDirectory(frontendDist, outDir)
+        (outDir ** "*").get
+      } else {
+        log.warn(s"frontend/dist not found at: $frontendDist (run: cd frontend && npm run build)")
+        Seq.empty[java.io.File]
+      }
+    }.taskValue,
+    
     assembly / assemblyJarName := "mp3-player-backend.jar",
     assembly / mainClass := Some("com.example.backend.Main"),
     assembly / assemblyMergeStrategy := {

@@ -131,7 +131,17 @@ h2 {
 }
 
 audio {
-    display: none; /* Hide native controls */
+    display: none;
+}
+
+.now-playing {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f3f4f6;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .player {
