@@ -9,9 +9,57 @@ export default function App() {
     const [error, setError] = useState('')
     const [currentPlaying, setCurrentPlaying] = useState(null)
 
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [currentTime, setCurrentTime] = useState(0)
+    const [duration, setDuration] = useState(0)
+    const [volume, setVolume] = useState(1)
+
     const [currentIndex, setCurrentIndex] = useState(-1)
+    const [shuffleMode, setShuffleMode] = useState(false)
+    const [shuffledIndices, setShuffledIndices] = useState([])
 
     const audioRef = useRef(null)
+
+    const togglePlay = () => {
+        if (!audioRef.current) return
+        if (isPlaying) {
+            audioRef.current.pause()
+        } else {
+            audioRef.current.play().catch(e => setError(`Playback error: ${e?.message}`))
+        }
+    }
+
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime)
+            setDuration(audioRef.current.duration)
+        }
+    }
+
+    const handlePlayPause = () => {
+        setIsPlaying(!audioRef.current.paused)
+    }
+
+    const handleVolumeChange = (e) => {
+        const vol = parseFloat(e.target.value)
+        setVolume(vol)
+        if (audioRef.current) audioRef.current.volume = vol
+    }
+
+    const handleProgressChange = (e) => {
+        const newTime = parseFloat(e.target.value)
+        if (audioRef.current) {
+            audioRef.current.currentTime = newTime
+            setCurrentTime(newTime)
+        }
+    }
+
+    const formatTime = (seconds) => {
+        if (!seconds || isNaN(seconds)) return '0:00'
+        const mins = Math.floor(seconds / 60)
+        const secs = Math.floor(seconds % 60)
+        return `${mins}:${secs.toString().padStart(2, '0')}`
+    }
 
     const loadFolders = async (dir = '') => {
         setLoading(true)
@@ -42,14 +90,82 @@ export default function App() {
             // Reset playback when the playlist changes
             setCurrentPlaying(null)
             setCurrentIndex(-1)
+            setShuffleMode(false)
+            setShuffledIndices([])
         } catch (err) {
             setError(`Error: ${err.message}`)
             setSongs([])
             setCurrentPlaying(null)
             setCurrentIndex(-1)
+            setShuffleMode(false)
+            setShuffledIndices([])
         } finally {
             setLoading(false)
         }
+    }
+
+    // Generate shuffled playlist
+    const initializeShuffle = (list) => {
+        const indices = Array.from({length: list.length}, (_, i) => i)
+        // Fisher-Yates shuffle
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]]
+        }
+        return indices
+    }
+
+    // Toggle shuffle mode
+    const toggleShuffle = () => {
+        if (!shuffleMode && songs.length > 0) {
+            // Turning ON shuffle
+            setShuffledIndices(initializeShuffle(songs))
+        }
+        setShuffleMode(!shuffleMode)
+    }
+
+    // Get next song index
+    const getNextIndex = () => {
+        if (songs.length === 0) return -1
+
+        if (shuffleMode) {
+            // In shuffle mode
+            if (shuffledIndices.length === 0) return -1
+            const currentPosInShuffled = shuffledIndices.indexOf(currentIndex)
+            const nextPos = (currentPosInShuffled + 1) % shuffledIndices.length
+            return shuffledIndices[nextPos]
+        } else {
+            // Normal mode
+            return (currentIndex + 1) % songs.length
+        }
+    }
+
+    // Get previous song index
+    const getPreviousIndex = () => {
+        if (songs.length === 0) return -1
+
+        if (shuffleMode) {
+            // In shuffle mode
+            if (shuffledIndices.length === 0) return -1
+            const currentPosInShuffled = shuffledIndices.indexOf(currentIndex)
+            const prevPos = currentPosInShuffled === 0 ? shuffledIndices.length - 1 : currentPosInShuffled - 1
+            return shuffledIndices[prevPos]
+        } else {
+            // Normal mode
+            return currentIndex <= 0 ? songs.length - 1 : currentIndex - 1
+        }
+    }
+
+    // Play next song
+    const playNext = () => {
+        const nextIdx = getNextIndex()
+        if (nextIdx >= 0) playSongAtIndex(nextIdx)
+    }
+
+    // Play previous song
+    const playPrevious = () => {
+        const prevIdx = getPreviousIndex()
+        if (prevIdx >= 0) playSongAtIndex(prevIdx)
     }
 
     const browseRoot = async () => {
@@ -89,9 +205,8 @@ export default function App() {
     }
     const handleEnded = () => {
         if (!songs.length) return
-
-        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % songs.length : 0
-        playSongAtIndex(nextIndex)
+        const nextIndex = getNextIndex()
+        if (nextIndex >= 0) playSongAtIndex(nextIndex)
     }
 
     return (
@@ -126,7 +241,58 @@ export default function App() {
                 </div>
             )}
 
-            <audio ref={audioRef} controls onEnded={handleEnded}></audio>
+            <audio
+                ref={audioRef}
+                onEnded={handleEnded}
+                onTimeUpdate={handleTimeUpdate}
+                onPlay={handlePlayPause}
+                onPause={handlePlayPause}
+            ></audio>
+
+            <div className="player">
+                <div className="player-progress">
+                    <input
+                        type="range"
+                        min="0"
+                        max={duration || 0}
+                        value={currentTime}
+                        onChange={handleProgressChange}
+                        className="progress-bar"
+                    />
+                </div>
+
+                <div className="player-controls">
+                    <div className="player-buttons">
+                        <button onClick={playPrevious} disabled={songs.length === 0} title="Previous">⏮️</button>
+                        <button onClick={togglePlay} disabled={songs.length === 0} className="play-btn"
+                                title={isPlaying ? 'Pause' : 'Play'}>
+                            {isPlaying ? '⏸️' : '▶️'}
+                        </button>
+                        <button onClick={playNext} disabled={songs.length === 0} title="Next">⏭️</button>
+                        <button onClick={toggleShuffle} disabled={songs.length === 0}
+                                className={shuffleMode ? 'active' : ''} title="Shuffle">🔀
+                        </button>
+                    </div>
+
+                    <div className="player-time">
+                        <span>{formatTime(currentTime)}</span>
+                        <span>/</span>
+                        <span>{formatTime(duration)}</span>
+                    </div>
+
+                    <div className="player-volume">
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={volume}
+                            onChange={handleVolumeChange}
+                            className="volume-slider"
+                        />
+                    </div>
+                </div>
+            </div>
 
             {songs.length > 0 && (
                 <div className="playlist">

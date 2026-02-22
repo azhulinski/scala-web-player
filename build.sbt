@@ -37,20 +37,6 @@ lazy val backend = project
       "org.typelevel" %% "log4cats-slf4j" % "2.7.1",
       "org.slf4j" % "slf4j-simple" % "2.0.17",
     ),
-    // Build frontend first, then copy to resources
-    Compile / resourceGenerators += Def.task {
-      val frontendDist = baseDirectory.value / ".." / "frontend" / "dist"
-      val resourceDir = (Compile / resourceManaged).value / "public"
-
-      if (frontendDist.exists()) {
-        // Copy frontend dist to resources
-        IO.copyDirectory(frontendDist, resourceDir)
-        (resourceDir ** "*").get
-      } else {
-        // Frontend not built yet - that's OK for development
-        Seq()
-      }
-    }.taskValue,
     assembly / assemblyJarName := "mp3-player-backend.jar",
     assembly / mainClass := Some("com.example.backend.Main"),
     assembly / assemblyMergeStrategy := {
